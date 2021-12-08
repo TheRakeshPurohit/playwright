@@ -67,7 +67,7 @@ test('should work and remove non-failures', async ({ runInlineTest }, testInfo) 
   expect(fs.existsSync(testInfo.outputPath('test-results', 'my-test-test-1-chromium-retry2'))).toBe(false);
 });
 
-test('should include repeat token', async ({runInlineTest}) => {
+test('should include repeat token', async ({ runInlineTest }) => {
   const result = await runInlineTest({
     'a.spec.js': `
       const { test } = pwt;
@@ -81,6 +81,56 @@ test('should include repeat token', async ({runInlineTest}) => {
   }, { 'repeat-each': 3 });
   expect(result.exitCode).toBe(0);
   expect(result.passed).toBe(3);
+});
+
+test('should be unique for beforeAll and afterAll hooks', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    'a.spec.js': `
+      const { test } = pwt;
+      test.beforeAll(({}, testInfo) => {
+        console.log('\\n%%' + testInfo.outputDir);
+      });
+      test.beforeAll(({}, testInfo) => {
+        console.log('\\n%%' + testInfo.outputDir);
+      });
+      test.afterAll(({}, testInfo) => {
+        console.log('\\n%%' + testInfo.outputDir);
+      });
+      test.afterAll(({}, testInfo) => {
+        console.log('\\n%%' + testInfo.outputDir);
+      });
+      test.describe('suite', () => {
+        test.beforeAll(({}, testInfo) => {
+          console.log('\\n%%' + testInfo.outputDir);
+        });
+        test.afterAll(({}, testInfo) => {
+          console.log('\\n%%' + testInfo.outputDir);
+        });
+        test('fails', ({}, testInfo) => {
+          expect(1).toBe(2);
+        });
+        test('passes', ({}, testInfo) => {
+        });
+      });
+    `
+  });
+  expect(result.exitCode).toBe(1);
+  expect(result.passed).toBe(1);
+  expect(result.failed).toBe(1);
+  expect(result.output.split('\n').filter(x => x.startsWith('%%'))).toEqual([
+    `%%${testInfo.outputPath('test-results', 'a-beforeAll-worker0')}`,
+    `%%${testInfo.outputPath('test-results', 'a-beforeAll1-worker0')}`,
+    `%%${testInfo.outputPath('test-results', 'a-suite-beforeAll-worker0')}`,
+    `%%${testInfo.outputPath('test-results', 'a-suite-afterAll-worker0')}`,
+    `%%${testInfo.outputPath('test-results', 'a-afterAll-worker0')}`,
+    `%%${testInfo.outputPath('test-results', 'a-afterAll1-worker0')}`,
+    `%%${testInfo.outputPath('test-results', 'a-beforeAll-worker1')}`,
+    `%%${testInfo.outputPath('test-results', 'a-beforeAll1-worker1')}`,
+    `%%${testInfo.outputPath('test-results', 'a-suite-beforeAll-worker1')}`,
+    `%%${testInfo.outputPath('test-results', 'a-suite-afterAll-worker1')}`,
+    `%%${testInfo.outputPath('test-results', 'a-afterAll-worker1')}`,
+    `%%${testInfo.outputPath('test-results', 'a-afterAll1-worker1')}`,
+  ]);
 });
 
 test('should include the project name', async ({ runInlineTest }) => {
@@ -166,7 +216,95 @@ test('should include the project name', async ({ runInlineTest }) => {
   expect(result.output).toContain('my-test.spec.js-snapshots/bar-Bar-space--suffix.txt');
 });
 
-test('should remove output dirs for projects run', async ({runInlineTest}, testInfo) => {
+test('should include path option in snapshot', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    'helper.ts': `
+      export const test = pwt.test.extend({
+        auto: [ async ({}, run, testInfo) => {
+          testInfo.snapshotSuffix = 'suffix';
+          await run();
+        }, { auto: true } ]
+      });
+    `,
+    'playwright.config.ts': `
+    module.exports = { projects: [
+      { name: 'foo' },
+    ] };
+    `,
+    'my-test.spec.js': `
+      const { test } = require('./helper');
+      test('test with path', async ({}, testInfo) => {
+        console.log(testInfo.snapshotPath('test', 'path', 'bar.txt').replace(/\\\\/g, '/'));
+      });
+    `,
+  });
+
+  expect(result.exitCode).toBe(0);
+  expect(result.results[0].status).toBe('passed');
+  expect(result.output).toContain('my-test.spec.js-snapshots/test/path/bar-foo-suffix.txt');
+});
+
+test('should error if snapshotPath is resolved to outside of parent', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    'helper.ts': `
+      export const test = pwt.test.extend({
+        auto: [ async ({}, run, testInfo) => {
+          testInfo.snapshotSuffix = 'suffix';
+          await run();
+        }, { auto: true } ]
+      });
+    `,
+    'playwright.config.ts': `
+      module.exports = { projects: [
+        { name: 'foo' },
+      ] };
+    `,
+    'my-test.spec.js': `
+      const { test } = require('./helper');
+      test('test with parent path', async ({}, testInfo) => {
+        console.log(testInfo.snapshotPath('..', 'test', 'path', 'bar.txt').replace(/\\\\/g, '/'));
+      });
+    `,
+  });
+
+  expect(result.exitCode).toBe(1);
+  expect(result.results[0].status).toBe('failed');
+  expect(result.output).toContain('The snapshotPath is not allowed outside of the parent directory. Please fix the defined path.');
+  const badPath = path.join('..', 'test', 'path', 'bar-foo-suffix.txt');
+  expect(result.output).toContain(`snapshotPath: ${badPath}`);
+});
+
+test('should error if outputPath is resolved to outside of parent', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    'helper.ts': `
+      export const test = pwt.test.extend({
+        auto: [ async ({}, run, testInfo) => {
+          testInfo.snapshotSuffix = 'suffix';
+          await run();
+        }, { auto: true } ]
+      });
+    `,
+    'playwright.config.ts': `
+      module.exports = { projects: [
+        { name: 'foo' },
+      ] };
+    `,
+    'my-test.spec.js': `
+      const { test } = require('./helper');
+      test('test with parent path', async ({}, testInfo) => {
+        console.log(testInfo.outputPath('..', 'test', 'path', 'bar-test').replace(/\\\\/g, '/'));
+      });
+    `,
+  });
+
+  expect(result.exitCode).toBe(1);
+  expect(result.results[0].status).toBe('failed');
+  expect(result.output).toContain('The outputPath is not allowed outside of the parent directory. Please fix the defined path.');
+  const badPath = path.join('..', 'test', 'path', 'bar-test');
+  expect(result.output).toContain(`outputPath: ${badPath}`);
+});
+
+test('should remove output dirs for projects run', async ({ runInlineTest }, testInfo) => {
   const paths: string[] = [];
   const files: string[] = [];
 
@@ -253,8 +391,28 @@ test('should accept a relative path for outputDir', async ({ runInlineTest }, te
       { outputDir: './my-output-dir' },
     ] };
     `,
-  }, {usesCustomOutputDir: true});
+  }, {}, {}, { usesCustomOutputDir: true });
   expect(result.exitCode).toBe(0);
+});
+
+test('should have output dir based on rootDir (cwd)', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    'playwright.config.js': `
+      const path = require('path');
+      module.exports = {
+        testDir: path.join(__dirname, 'e2e'),
+        outputDir: 'test-results/',
+      };`,
+    'e2e/example.spec.js': `
+      const { test } = pwt;
+      const fs = require('fs');
+      test('hello world', async ({ }, testInfo) => {
+        fs.writeFileSync(testInfo.outputPath('foo.txt'), 'hello');
+      });
+    `,
+  }, {}, {}, { usesCustomOutputDir: true });
+  expect(result.exitCode).toBe(0);
+  expect(fs.existsSync(testInfo.outputPath('test-results', 'example-hello-world', 'foo.txt'))).toBe(true);
 });
 
 
@@ -269,6 +427,19 @@ test('should allow nonAscii characters in the output dir', async ({ runInlineTes
   });
   const outputDir = result.output.split('\n').filter(x => x.startsWith('%%'))[0].slice('%%'.length);
   expect(outputDir).toBe(path.join(testInfo.outputDir, 'test-results', 'my-test-こんにちは世界'));
+});
+
+test('should not mangle double dashes', async ({ runInlineTest }, testInfo) => {
+  const result = await runInlineTest({
+    'my--file.spec.js': `
+      const { test } = pwt;
+      test('my--test', async ({}, testInfo) => {
+        console.log('\\n%%' + testInfo.outputDir);
+      });
+    `,
+  });
+  const outputDir = result.output.split('\n').filter(x => x.startsWith('%%'))[0].slice('%%'.length);
+  expect(outputDir).toBe(path.join(testInfo.outputDir, 'test-results', 'my--file-my--test'));
 });
 
 test('should allow include the describe name the output dir', async ({ runInlineTest }, testInfo) => {

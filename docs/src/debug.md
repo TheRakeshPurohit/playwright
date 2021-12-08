@@ -111,41 +111,44 @@ Using `PWDEBUG=console` will configure the browser for debugging in Developer to
 [Playwright selectors](./selectors.md). This can be used to verify text or
 composite selectors.
 
-```bash js
-# Linux/macOS
+```bash bash-flavor=bash lang=js
 PWDEBUG=console npm run test
+```
 
-# Windows with cmd.exe
+```bash bash-flavor=batch lang=js
 set PWDEBUG=console
-npm run test
-
-# Windows with PowerShell
-$env:PWDEBUG="console"
 npm run test
 ```
 
-```bash java
-# Linux/macOS
+```bash bash-flavor=powershell lang=js
+env:PWDEBUG="console"
+npm run test
+```
+
+```bash bash-flavor=bash lang=java
 PWDEBUG=console mvn test
+```
 
-# Windows with cmd.exe
+```bash bash-flavor=batch lang=java
 set PWDEBUG=console
 mvn test
+```
 
-# Windows with PowerShell
+```bash bash-flavor=powershell lang=java
 $env:PWDEBUG="console"
 mvn test
 ```
 
-```bash python
-# Linux/macOS
+```bash bash-flavor=bash lang=python
 PWDEBUG=console pytest -s
+```
 
-# Windows with cmd.exe
+```bash bash-flavor=batch lang=python
 set PWDEBUG=console
 pytest -s
+```
 
-# Windows with PowerShell
+```bash bash-flavor=powershell lang=python
 $env:PWDEBUG="console"
 pytest -s
 ```
@@ -163,6 +166,7 @@ When running in Debug Mode with `PWDEBUG=console`, a `playwright` object is avai
     * `playwright.$$(selector)`: Highlight all occurrences of the selector. This reflects
       how `page.$$` would see the page.
     * `playwright.inspect(selector)`: Inspect the selector in the Elements panel.
+    * `playwright.locator(selector)`: Highlight the first occurrence of the locator.
     * `playwright.clear()`: Clear existing highlights.
     * `playwright.selector(element)`: Generate a selector that points to the element.
 
@@ -190,54 +194,58 @@ breakpoints.
 
 Playwright supports verbose logging with the `DEBUG` environment variable.
 
-```bash js
-# Linux/macOS
+```bash bash-flavor=bash lang=js
 DEBUG=pw:api npm run test
+```
 
-# Windows with cmd.exe
+```bash bash-flavor=batch lang=js
 set DEBUG=pw:api
 npm run test
+```
 
-# Windows with PowerShell
+```bash bash-flavor=powershell lang=js
 $env:DEBUG="pw:api"
 npm run test
 ```
 
-```bash java
-# Linux/macOS
+```bash bash-flavor=bash lang=java
 DEBUG=pw:api mvn test
+```
 
-# Windows with cmd.exe
+```bash bash-flavor=batch lang=java
 set DEBUG=pw:api
 mvn test
+```
 
-# Windows with PowerShell
+```bash bash-flavor=powershell lang=java
 $env:DEBUG="pw:api"
 mvn test
 ```
 
-```bash python
-# Linux/macOS
+```bash bash-flavor=bash lang=python
 DEBUG=pw:api pytest -s
+```
 
-# Windows with cmd.exe
+```bash bash-flavor=batch lang=python
 set DEBUG=pw:api
 pytest -s
+```
 
-# Windows with PowerShell
+```bash bash-flavor=powershell lang=python
 $env:DEBUG="pw:api"
 pytest -s
 ```
 
-```bash csharp
-# Linux/macOS
+```bash bash-flavor=bash lang=csharp
 DEBUG=pw:api dotnet run
+```
 
-# Windows with cmd.exe
+```bash bash-flavor=batch lang=csharp
 set DEBUG=pw:api
 dotnet run
+```
 
-# Windows with PowerShell
+```bash bash-flavor=powershell lang=csharp
 $env:DEBUG="pw:api"
 dotnet run
 ```

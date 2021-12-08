@@ -1,10 +1,11 @@
 ## navigation-wait-until
-- `waitUntil` <[WaitUntilState]<"load"|"domcontentloaded"|"networkidle">>
+- `waitUntil` <[WaitUntilState]<"load"|"domcontentloaded"|"networkidle"|"commit">>
 
 When to consider operation succeeded, defaults to `load`. Events can be either:
 * `'domcontentloaded'` - consider operation to be finished when the `DOMContentLoaded` event is fired.
 * `'load'` - consider operation to be finished when the `load` event is fired.
 * `'networkidle'` - consider operation to be finished when there are no network connections for at least `500` ms.
+* `'commit'` - consider operation to be finished when network response is received and the document started loading.
 
 ## navigation-timeout
 - `timeout` <[float]>
@@ -117,6 +118,13 @@ Clicks on the source element at this point relative to the top-left corner of th
 
 Drops on the target element at this point relative to the top-left corner of the element's padding box. If not specified, some visible point of the element is used.
 
+## input-checked
+* langs:
+  - alias-csharp: checkedState
+- `checked` <[boolean]>
+
+Whether to check or uncheck the checkbox.
+
 ## query-selector
 - `selector` <[string]>
 
@@ -178,7 +186,7 @@ Dangerous option; use with care. Defaults to `false`.
   - `server` <[string]> Proxy to be used for all requests. HTTP and SOCKS proxies are supported, for example
     `http://myproxy.com:3128` or `socks5://myproxy.com:3128`. Short form `myproxy.com:3128` is considered an HTTP
     proxy.
-  - `bypass` <[string]> Optional coma-separated domains to bypass proxy, for example `".com, chromium.org,
+  - `bypass` <[string]> Optional comma-separated domains to bypass proxy, for example `".com, chromium.org,
     .domain.com"`.
   - `username` <[string]> Optional username to use if HTTP proxy requires authentication.
   - `password` <[string]> Optional password to use if HTTP proxy requires authentication.
@@ -200,17 +208,16 @@ Specify environment variables that will be visible to the browser. Defaults to `
 ## js-python-context-option-storage-state
 * langs: js, python
 - `storageState` <[path]|[Object]>
-  - `cookies` <[Array]<[Object]>> Optional cookies to set for context
+  - `cookies` <[Array]<[Object]>> cookies to set for context
     - `name` <[string]>
     - `value` <[string]>
-    - `url` <[string]> Optional either url or domain / path are required
-    - `domain` <[string]> Optional either url or domain / path are required
-    - `path` <[string]> Optional either url or domain / path are required
-    - `expires` <[float]> Optional Unix time in seconds.
-    - `httpOnly` <[boolean]> Optional httpOnly flag
-    - `secure` <[boolean]> Optional secure flag
-    - `sameSite` <[SameSiteAttribute]<"Strict"|"Lax"|"None">> Optional sameSite flag
-  - `origins` <[Array]<[Object]>> Optional localStorage to set for context
+    - `domain` <[string]> domain and path are required
+    - `path` <[string]> domain and path are required
+    - `expires` <[float]> Unix time in seconds.
+    - `httpOnly` <[boolean]>
+    - `secure` <[boolean]>
+    - `sameSite` <[SameSiteAttribute]<"Strict"|"Lax"|"None">> sameSite flag
+  - `origins` <[Array]<[Object]>> localStorage to set for context
     - `origin` <[string]>
     - `localStorage` <[Array]<[Object]>>
       - `name` <[string]>
@@ -233,15 +240,22 @@ obtained via [`method: BrowserContext.storageState`].
 Populates context with given storage state. This option can be used to initialize context with logged-in information
 obtained via [`method: BrowserContext.storageState`]. Path to the file with saved storage state.
 
+## storagestate-option-path
+- `path` <[path]>
+
+The file path to save the storage state to. If [`option: path`] is a relative path, then it is resolved relative to
+current working directory. If no path is provided, storage
+state is still returned, but won't be saved to the disk.
+
 ## context-option-acceptdownloads
 - `acceptDownloads` <[boolean]>
 
-Whether to automatically download all the attachments. Defaults to `false` where all the downloads are canceled.
+Whether to automatically download all the attachments. Defaults to `true` where all the downloads are accepted.
 
 ## context-option-ignorehttpserrors
 - `ignoreHTTPSErrors` <[boolean]>
 
-Whether to ignore HTTPS errors during navigation. Defaults to `false`.
+Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
 
 ## context-option-bypasscsp
 - `bypassCSP` <[boolean]>
@@ -283,6 +297,76 @@ Emulates consistent viewport for each page. Defaults to an 1280x720 viewport. Us
 
 Emulates consistent window screen size available inside web page via `window.screen`. Is only used when the
 [`option: viewport`] is set.
+
+## fetch-param-url
+- `url` <[string]>
+
+Target URL.
+
+## js-python-fetch-option-params
+* langs: js, python
+- `params` <[Object]<[string], [string]|[float]|[boolean]>>
+
+Query parameters to be sent with the URL.
+
+## java-fetch-params
+* langs: java
+- `options` <[RequestOptions]>
+
+Optional request parameters.
+
+## js-python-fetch-option-headers
+* langs: js, python
+- `headers` <[Object]<[string], [string]>>
+
+Allows to set HTTP headers.
+
+## js-python-fetch-option-timeout
+* langs: js, python
+- `timeout` <[float]>
+
+Request timeout in milliseconds. Defaults to `30000` (30 seconds). Pass `0` to disable timeout.
+
+## js-python-fetch-option-failonstatuscode
+* langs: js, python
+- `failOnStatusCode` <[boolean]>
+
+Whether to throw on response codes other than 2xx and 3xx. By default response object is returned
+for all status codes.
+
+## js-python-fetch-option-form
+* langs: js, python
+- `form` <[Object]<[string], [string]|[float]|[boolean]>>
+
+Provides an object that will be serialized as html form using `application/x-www-form-urlencoded` encoding and sent as
+this request body. If this parameter is specified `content-type` header will be set to `application/x-www-form-urlencoded`
+unless explicitly provided.
+
+## js-pyhton-fetch-option-multipart
+* langs: js, python
+- `multipart` <[Object]<[string], [string]|[float]|[boolean]|[ReadStream]|[Object]>>
+  - `name` <[string]> File name
+  - `mimeType` <[string]> File type
+  - `buffer` <[Buffer]> File content
+
+Provides an object that will be serialized as html form using `multipart/form-data` encoding and sent as
+this request body. If this parameter is specified `content-type` header will be set to `multipart/form-data`
+unless explicitly provided. File values can be passed either as [`fs.ReadStream`](https://nodejs.org/api/fs.html#fs_class_fs_readstream)
+or as file-like object containing file name, mime-type and its content.
+
+## js-python-fetch-option-data
+* langs: js, python
+- `data` <[string]|[Buffer]|[Serializable]>
+
+Allows to set post data of the request. If the data parameter is an object, it will be serialized to json string
+and `content-type` header will be set to `application/json` if not explicitly set. Otherwise the `content-type` header will be
+set to `application/octet-stream` if not explicitly set.
+
+## js-python-fetch-option-ignorehttpserrors
+* langs: js, python
+- `ignoreHTTPSErrors` <[boolean]>
+
+Whether to ignore HTTPS errors when sending network requests. Defaults to `false`.
 
 ## evaluate-expression
 - `expression` <[string]>
@@ -388,7 +472,7 @@ A list of permissions to grant to all pages in this context. See
 ## context-option-extrahttpheaders
 - `extraHTTPHeaders` <[Object]<[string], [string]>>
 
-An object containing additional HTTP headers to be sent with every request. All header values must be strings.
+An object containing additional HTTP headers to be sent with every request.
 
 ## context-option-offline
 - `offline` <[boolean]>
@@ -413,6 +497,16 @@ Emulates `'prefers-colors-scheme'` media feature, supported values are `'light'`
 
 Emulates `'prefers-reduced-motion'` media feature, supported values are `'reduce'`, `'no-preference'`. See [`method: Page.emulateMedia`] for more details. Defaults
 to `'no-preference'`.
+
+## context-option-forcedColors
+- `forcedColors` <[ForcedColors]<"active"|"none">>
+
+Emulates `'forced-colors'` media feature, supported values are `'active'`, `'none'`. See [`method: Page.emulateMedia`] for more details. Defaults
+to `'none'`.
+
+:::note
+It's not supported in WebKit, see [here](https://bugs.webkit.org/show_bug.cgi?id=225281) in their issue tracker.
+:::
 
 ## context-option-logger
 * langs: js
@@ -499,7 +593,7 @@ Actual picture of each page will be scaled down if necessary to fit the specifie
 - `proxy` <[Object]>
   - `server` <[string]> Proxy to be used for all requests. HTTP and SOCKS proxies are supported, for example
     `http://myproxy.com:3128` or `socks5://myproxy.com:3128`. Short form `myproxy.com:3128` is considered an HTTP proxy.
-  - `bypass` <[string]> Optional coma-separated domains to bypass proxy, for example `".com, chromium.org, .domain.com"`.
+  - `bypass` <[string]> Optional comma-separated domains to bypass proxy, for example `".com, chromium.org, .domain.com"`.
   - `username` <[string]> Optional username to use if HTTP proxy requires authentication.
   - `password` <[string]> Optional password to use if HTTP proxy requires authentication.
 
@@ -532,7 +626,9 @@ is considered matching if all specified properties match.
 ## wait-for-navigation-url
 - `url` <[string]|[RegExp]|[function]\([URL]\):[boolean]>
 
-A glob pattern, regex pattern or predicate receiving [URL] to match while waiting for the navigation.
+A glob pattern, regex pattern or predicate receiving [URL] to match while waiting for the navigation. Note that if
+the parameter is a string without wilcard characters, the method will wait for navigation to URL that is exactly
+equal to the string.
 
 ## wait-for-event-event
 * langs: js, python, java
@@ -611,6 +707,18 @@ The default value can be changed by using the [`method: BrowserContext.setDefaul
 Maximum time in milliseconds, defaults to 30 seconds, pass `0` to disable timeout. The default value can be changed by
 using the [`method: AndroidDevice.setDefaultTimeout`] method.
 
+## assertions-timeout
+* langs: js
+- `timeout` <[float]>
+
+Time to retry the assertion for. Defaults to `timeout` in [`property: TestConfig.expect`].
+
+## assertions-timeout
+* langs: java, python
+- `timeout` <[float]>
+
+Time to retry the assertion for.
+
 ## shared-context-params-list
 - %%-context-option-acceptdownloads-%%
 - %%-context-option-ignorehttpserrors-%%
@@ -635,6 +743,7 @@ using the [`method: AndroidDevice.setDefaultTimeout`] method.
 - %%-context-option-httpcredentials-%%
 - %%-context-option-colorscheme-%%
 - %%-context-option-reducedMotion-%%
+- %%-context-option-forcedColors-%%
 - %%-context-option-logger-%%
 - %%-context-option-videospath-%%
 - %%-context-option-videosize-%%

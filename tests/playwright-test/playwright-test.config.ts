@@ -14,17 +14,19 @@
  * limitations under the License.
  */
 
-import { Config } from '../config/test-runner';
+import { Config } from './stable-test-runner';
 
 const config: Config = {
   testDir: __dirname,
-  testIgnore: 'assets/**',
+  testIgnore: ['assets/**', 'stable-test-runner/**'],
   timeout: 30000,
   forbidOnly: !!process.env.CI,
   preserveOutput: process.env.CI ? 'failures-only' : 'always',
-  projects: [
-    { name: 'playwright-test' },
-  ]
+  projects: process.env.PLAYWRIGHT_DOCKER ? [
+    { name: 'visual tests', testMatch: ['*.visual.ts'] },
+  ] : [
+    { name: 'playwright-test', testIgnore: ['*.visual.ts'] },
+  ],
 };
 
 export default config;

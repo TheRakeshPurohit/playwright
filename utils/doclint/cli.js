@@ -17,7 +17,7 @@
 
 //@ts-check
 
-const playwright = require('../../');
+const playwright = require('playwright-core');
 const fs = require('fs');
 const path = require('path');
 const { parseApi } = require('./api_parser');
@@ -37,18 +37,6 @@ run().catch(e => {
 });;
 
 async function run() {
-  const apiDocumentation = parseApi(path.join(PROJECT_DIR, 'docs', 'src', 'api'));
-  apiDocumentation.filterForLanguage('js');
-  const testDocumentation = parseApi(path.join(PROJECT_DIR, 'docs', 'src', 'test-api'), path.join(PROJECT_DIR, 'docs', 'src', 'api', 'params.md'));
-  testDocumentation.filterForLanguage('js');
-  const testRerpoterDocumentation = parseApi(path.join(PROJECT_DIR, 'docs', 'src', 'test-reporter-api'));
-  testRerpoterDocumentation.filterForLanguage('js');
-  const documentation = apiDocumentation.mergeWith(testDocumentation).mergeWith(testRerpoterDocumentation);
-  documentation.mergeWith(testDocumentation);
-
-  // This validates member links.
-  documentation.setLinkRenderer(() => undefined);
-
   // Patch README.md
   const versions = await getBrowserVersions();
   {
@@ -74,7 +62,7 @@ async function run() {
 
   // Update device descriptors
   {
-    const devicesDescriptorsSourceFile = path.join(PROJECT_DIR, 'src', 'server', 'deviceDescriptorsSource.json')
+    const devicesDescriptorsSourceFile = path.join(PROJECT_DIR, 'packages', 'playwright-core', 'src', 'server', 'deviceDescriptorsSource.json')
     const devicesDescriptors = require(devicesDescriptorsSourceFile)
     for (const deviceName of Object.keys(devicesDescriptors)) {
       switch (devicesDescriptors[deviceName].defaultBrowserType) {
@@ -91,7 +79,7 @@ async function run() {
           devicesDescriptors[deviceName].userAgent = devicesDescriptors[deviceName].userAgent.replace(
             /^(.*Firefox\/)(.*?)( .*?)?$/,
             `$1${versions.firefox}$3`
-          ).replace(/(.*rv:)(.*)\)(.*?)/, `$1${versions.firefox}$3`)
+          ).replace(/^(.*rv:)(.*)(\).*?)$/, `$1${versions.firefox}$3`)
           break;
         case 'webkit':
           devicesDescriptors[deviceName].userAgent = devicesDescriptors[deviceName].userAgent.replace(
@@ -108,17 +96,42 @@ async function run() {
 
   // Validate links
   {
-    for (const file of fs.readdirSync(path.join(PROJECT_DIR, 'docs', 'src'))) {
-      if (!file.endsWith('.md'))
-        continue;
-      const data = fs.readFileSync(path.join(PROJECT_DIR, 'docs', 'src', file)).toString();
-      documentation.renderLinksInText(md.parse(data));
+    const langs = ['js', 'java', 'python', 'csharp'];
+    for (const lang of langs) {
+      try {
+        let documentation = parseApi(path.join(PROJECT_DIR, 'docs', 'src', 'api'));
+        documentation.filterForLanguage(lang);
+        if (lang === 'js') {
+          const testDocumentation = parseApi(path.join(PROJECT_DIR, 'docs', 'src', 'test-api'), path.join(PROJECT_DIR, 'docs', 'src', 'api', 'params.md'));
+          testDocumentation.filterForLanguage('js');
+          const testRerpoterDocumentation = parseApi(path.join(PROJECT_DIR, 'docs', 'src', 'test-reporter-api'));
+          testRerpoterDocumentation.filterForLanguage('js');
+          documentation = documentation.mergeWith(testDocumentation).mergeWith(testRerpoterDocumentation);
+        }
+
+        // This validates member links.
+        documentation.setLinkRenderer(() => undefined);
+
+        for (const file of fs.readdirSync(path.join(PROJECT_DIR, 'docs', 'src'))) {
+          if (!file.endsWith('.md'))
+            continue;
+          if (langs.some(other => other !== lang && file.endsWith(`-${other}.md`)))
+            continue;
+          const data = fs.readFileSync(path.join(PROJECT_DIR, 'docs', 'src', file)).toString();
+          documentation.renderLinksInText(md.filterNodesForLanguage(md.parse(data), lang));
+        }
+      } catch (e) {
+        e.message = `While processing "${lang}"\n` + e.message;
+        throw e;
+      }
     }
   }
 
   // Check for missing docs
   {
-    const srcClient = path.join(PROJECT_DIR, 'src', 'client');
+    const apiDocumentation = parseApi(path.join(PROJECT_DIR, 'docs', 'src', 'api'));
+    apiDocumentation.filterForLanguage('js');
+    const srcClient = path.join(PROJECT_DIR, 'packages', 'playwright-core', 'src', 'client');
     const sources = fs.readdirSync(srcClient).map(n => path.join(srcClient, n));
     const errors = missingDocs(apiDocumentation, sources, path.join(srcClient, 'api.ts'));
     if (errors.length) {
@@ -132,7 +145,7 @@ async function run() {
 
   if (dirtyFiles.size) {
     console.log('============================')
-    console.log('ERROR: generated markdown files have changed, this is only error if happens in CI:');
+    console.log('ERROR: generated files have changed, this is only error if happens in CI:');
     [...dirtyFiles].forEach(f => console.log(f));
     console.log('============================')
     process.exit(1);

@@ -40,7 +40,6 @@ const optionTypes = new Map();
 const customTypeNames = new Map([
   ['domcontentloaded', 'DOMContentLoaded'],
   ['networkidle', 'NetworkIdle'],
-  ['File', 'FilePayload'],
 ]);
 
 const outputDir = process.argv[2] || path.join(__dirname, 'generate_types', 'csharp');
@@ -97,7 +96,7 @@ classNameMap.set('Readable', 'Stream');
  * @param {string} folder
  * @param {string} extendsName
  */
-function writeFile(kind, name, spec, body, folder, extendsName = null, namespace = "Microsoft.Playwright") {
+function writeFile(kind, name, spec, body, folder, extendsName = null) {
   const out = [];
   // console.log(`Generating ${name}`);
 
@@ -123,7 +122,7 @@ function writeFile(kind, name, spec, body, folder, extendsName = null, namespace
   out.push(...body);
   out.push('}');
 
-  let content = template.replace('[NAMESPACE]', namespace).replace('[CONTENT]', out.join(EOL));
+  let content = template.replace('[CONTENT]', out.join(EOL));
   fs.writeFileSync(path.join(folder, name + '.cs'), content);
 }
 
@@ -294,7 +293,6 @@ function renderMember(member, parent, options, out) {
     return;
   }
 
-  /** @type string */
   let type = translateType(member.type, parent, t => generateNameDefault(member, name, t, parent));
   if (member.kind === 'event') {
     if (!member.type)
@@ -302,6 +300,8 @@ function renderMember(member, parent, options, out) {
     out.push('');
     if (member.spec)
       out.push(...XmlDoc.renderXmlDoc(member.spec, maxDocumentationColumnWidth));
+    if (member.deprecated)
+      out.push(`[System.Obsolete]`);
     out.push(`event EventHandler<${type}> ${name};`);
     return;
   }
@@ -394,8 +394,28 @@ function generateNameDefault(member, name, t, parent) {
         if (attemptedName.endsWith('s')
           && !["properties", "httpcredentials"].includes(attemptedName.toLowerCase()))
           attemptedName = attemptedName.substring(0, attemptedName.length - 1);
-        if (customTypeNames.get(attemptedName))
-          attemptedName = customTypeNames.get(attemptedName);
+
+        // For some of these we don't want to generate generic types.
+        // For some others we simply did not have the code that was deduping the names.
+        if (attemptedName === 'BoundingBox')
+          attemptedName = `${parent.name}BoundingBoxResult`;
+        if (attemptedName === 'BrowserContextCookie')
+          attemptedName = 'BrowserContextCookiesResult';
+        if (attemptedName === 'File')
+          attemptedName = `FilePayload`;
+        if (attemptedName === 'Size')
+          attemptedName = 'RequestSizesResult';
+        if (attemptedName === 'ViewportSize' && parent.name === 'Page')
+          attemptedName = 'PageViewportSizeResult';
+        if (attemptedName === 'SecurityDetail')
+          attemptedName = 'ResponseSecurityDetailsResult';
+        if (attemptedName === 'ServerAddr')
+          attemptedName = 'ResponseServerAddrResult';
+        if (attemptedName === 'Timing')
+          attemptedName = 'RequestTimingResult';
+        if (attemptedName === 'HeadersArray')
+          attemptedName = 'Header';
+
         let probableType = modelTypes.get(attemptedName);
         if ((probableType && typesDiffer(t, probableType))
           || (["Value"].includes(attemptedName))) {
@@ -457,18 +477,6 @@ function renderMethod(member, parent, name, options, out) {
   if (options.trimRunAndPrefix)
     name = name.substring('RunAnd'.length);
 
-  /**
-   * @param {Documentation.Type} type 
-   * @returns 
-   */
-  function resolveType(type) {
-    return translateType(type, parent, (t) => {
-      let newName = `${parent.name}${toMemberName(member)}Result`;
-      documentedResults.set(newName, `Result of calling <see cref="I${toTitleCase(parent.name)}.${toMemberName(member, true)}"/>.`);
-      return newName;
-    });
-  }
-
   /** @type {Map<string, string[]>} */
   const paramDocs = new Map();
   const addParamsDoc = (paramName, docs) => {
@@ -479,32 +487,8 @@ function renderMethod(member, parent, name, options, out) {
     paramDocs.set(paramName, docs);
   };
 
-  /** @type {string} */
-  let type = null;
-  // need to check the original one
-  if (member.type.name === 'Object' || member.type.name === 'Array') {
-    let innerType = member.type;
-    let isArray = false;
-    if (innerType.name === 'Array') {
-      // we want to influence the name, but also change the object type
-      innerType = member.type.templates[0];
-      isArray = true;
-    }
+  let type = translateType(member.type, parent, t => generateNameDefault(member, name, t, parent), false, true);
 
-    if (innerType.expression === '[Object]<[string], [string]>') {
-      // do nothing, because this is handled down the road
-    } else if (!isArray && !innerType.properties) {
-      type = `dynamic`;
-    } else {
-      type = classNameMap.get(innerType.name);
-      if (!type)
-        type = resolveType(innerType);
-      if (isArray)
-        type = `IReadOnlyList<${type}>`;
-    }
-  }
-
-  type = type || resolveType(member.type);
   // TODO: this is something that will probably go into the docs
   // translate simple getters into read-only properties, and simple
   // set-only methods to settable properties
@@ -516,6 +500,8 @@ function renderMethod(member, parent, name, options, out) {
     if (!member.async) {
       if (member.spec && !options.nodocs)
         out.push(...XmlDoc.renderXmlDoc(member.spec, maxDocumentationColumnWidth));
+      if (member.deprecated)
+        out.push(`[System.Obsolete]`);
       out.push(`${type} ${name} { get; }`);
       return;
     }
@@ -737,14 +723,14 @@ function renderMethod(member, parent, name, options, out) {
  *  @param {boolean=} optional
  *  @returns {string}
  */
-function translateType(type, parent, generateNameCallback = t => t.name, optional = false) {
+function translateType(type, parent, generateNameCallback = t => t.name, optional = false, isReturnType = false) {
   // a few special cases we can fix automatically
   if (type.expression === '[null]|[Error]')
     return 'void';
 
   if (type.union) {
     if (type.union[0].name === 'null' && type.union.length === 2)
-      return translateType(type.union[1], parent, generateNameCallback, true);
+      return translateType(type.union[1], parent, generateNameCallback, true, isReturnType);
 
     if (type.expression === '[string]|[Buffer]')
       return `byte[]`; // TODO: make sure we implement extension methods for this!
@@ -769,8 +755,8 @@ function translateType(type, parent, generateNameCallback = t => t.name, optiona
     if (type.templates.length != 1)
       throw new Error(`Array (${type.name} from ${parent.name}) has more than 1 dimension. Panic.`);
 
-    let innerType = translateType(type.templates[0], parent, generateNameCallback);
-    return `IEnumerable<${innerType}>`;
+    let innerType = translateType(type.templates[0], parent, generateNameCallback, false, isReturnType);
+    return isReturnType ? `IReadOnlyList<${innerType}>` : `IEnumerable<${innerType}>`;
   }
 
   if (type.name === 'Object') {
@@ -778,8 +764,8 @@ function translateType(type, parent, generateNameCallback = t => t.name, optiona
     // TODO: this can be genericized
     if (type.templates && type.templates.length == 2) {
       // get the inner types of both templates, and if they're strings, it's a keyvaluepair string, string,
-      let keyType = translateType(type.templates[0], parent, generateNameCallback);
-      let valueType = translateType(type.templates[1], parent, generateNameCallback);
+      let keyType = translateType(type.templates[0], parent, generateNameCallback, false, isReturnType);
+      let valueType = translateType(type.templates[1], parent, generateNameCallback, false, isReturnType);
       if (parent.name === 'Request' || parent.name === 'Response')
         return `Dictionary<${keyType}, ${valueType}>`;
       return `IEnumerable<KeyValuePair<${keyType}, ${valueType}>>`;
@@ -803,8 +789,8 @@ function translateType(type, parent, generateNameCallback = t => t.name, optiona
   if (type.name === 'Map') {
     if (type.templates && type.templates.length == 2) {
       // we map to a dictionary
-      let keyType = translateType(type.templates[0], parent, generateNameCallback);
-      let valueType = translateType(type.templates[1], parent, generateNameCallback);
+      let keyType = translateType(type.templates[0], parent, generateNameCallback, false, isReturnType);
+      let valueType = translateType(type.templates[1], parent, generateNameCallback, false, isReturnType);
       return `Dictionary<${keyType}, ${valueType}>`;
     } else {
       throw 'Map has invalid number of templates.';
@@ -817,7 +803,7 @@ function translateType(type, parent, generateNameCallback = t => t.name, optiona
 
     let argsList = '';
     if (type.args) {
-      let translatedCallbackArguments = type.args.map(t => translateType(t, parent, generateNameCallback));
+      let translatedCallbackArguments = type.args.map(t => translateType(t, parent, generateNameCallback, false, isReturnType));
       if (translatedCallbackArguments.includes(null))
         throw new Error('There was an argument we could not parse. Aborting.');
 
@@ -828,7 +814,7 @@ function translateType(type, parent, generateNameCallback = t => t.name, optiona
       // this is an Action
       return `Action<${argsList}>`;
     } else {
-      let returnType = translateType(type.returnType, parent, generateNameCallback);
+      let returnType = translateType(type.returnType, parent, generateNameCallback, false, isReturnType);
       if (returnType == null)
         throw new Error('Unexpected null as return type.');
 

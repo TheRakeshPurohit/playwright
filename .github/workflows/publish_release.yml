@@ -1,4 +1,4 @@
-name: "release"
+name: "publish release"
 
 on:
   release:
@@ -15,10 +15,16 @@ jobs:
       with:
         node-version: 12
         registry-url: 'https://registry.npmjs.org'
+    - run: npm i -g npm@8
     - run: npm ci
     - run: npm run build
-    - run: node lib/cli/cli install-deps
+    - run: npx playwright install-deps
+    - run: utils/publish_all_packages.sh --release-candidate
+      if: "github.event.release.prerelease"
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     - run: utils/publish_all_packages.sh --release
+      if: "!github.event.release.prerelease"
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -32,9 +38,10 @@ jobs:
       with:
         node-version: 12
         registry-url: 'https://registry.npmjs.org'
+    - run: npm i -g npm@8
     - run: npm ci
     - run: npm run build
-    - run: node lib/cli/cli install-deps
+    - run: npx playwright install-deps
     - run: utils/build/build-playwright-driver.sh
     - run: utils/build/upload-playwright-driver.sh
       env:
@@ -48,28 +55,36 @@ jobs:
     if: github.repository == 'microsoft/playwright'
     steps:
     - uses: actions/checkout@v2
+    - uses: actions/setup-node@v2
+      with:
+        node-version: 12
+        registry-url: 'https://registry.npmjs.org'
     - uses: azure/docker-login@v1
       with:
         login-server: playwright.azurecr.io
         username: playwright
         password: ${{ secrets.DOCKER_PASSWORD }}
-    - uses: actions/setup-node@v2
+    - name: Set up Docker QEMU for arm64 docker builds
+      uses: docker/setup-qemu-action@v1
       with:
-        node-version: 12
+        platforms: arm64
+    - run: npm i -g npm@8
     - run: npm ci
     - run: npm run build
-    - run: node lib/cli/cli install-deps
-    - run: ./utils/docker/build.sh bionic playwright:localbuild-bionic
-    - run: ./utils/docker/build.sh focal playwright:localbuild-focal
-    - name: tag & publish
-      run: |
-        # GITHUB_REF has a form of `refs/tags/v1.3.0`.
-        # TAG_NAME would be `v1.3.0`
-        TAG_NAME=${GITHUB_REF#refs/tags/}
-        ./utils/docker/tag_and_push.sh playwright:localbuild-bionic playwright.azurecr.io/public/playwright:bionic
-        ./utils/docker/tag_and_push.sh playwright:localbuild-bionic playwright.azurecr.io/public/playwright:${TAG_NAME}-bionic
+    - run: npx playwright install-deps
+    - run: ./utils/docker/publish_docker.sh stable
 
-        ./utils/docker/tag_and_push.sh playwright:localbuild-focal playwright.azurecr.io/public/playwright:latest
-        ./utils/docker/tag_and_push.sh playwright:localbuild-focal playwright.azurecr.io/public/playwright:focal
-        ./utils/docker/tag_and_push.sh playwright:localbuild-focal playwright.azurecr.io/public/playwright:${TAG_NAME}
-        ./utils/docker/tag_and_push.sh playwright:localbuild-focal playwright.azurecr.io/public/playwright:${TAG_NAME}-focal
+  publish-trace-viewer:
+    name: "publish Trace Viewer to trace.playwright.dev"
+    runs-on: ubuntu-20.04
+    if: github.repository == 'microsoft/playwright'
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-node@v2
+      with:
+        node-version: 16
+    - run: npm i -g npm@7
+    - name: Deploy Stable
+      run: bash utils/build/deploy-trace-viewer.sh --stable
+      env:
+        GH_SERVICE_ACCOUNT_TOKEN: ${{ secrets.GH_SERVICE_ACCOUNT_TOKEN }}

@@ -383,6 +383,11 @@ Optional event-specific initialization properties.
 
 Returns the return value of [`param: expression`].
 
+:::caution
+This method does not wait for the element to pass actionability checks and therefore can lead to
+the flaky tests. Use [`method: Locator.evaluate`], other [Locator] helper methods or web-first assertions instead.
+:::
+
 The method finds an element matching the specified selector within the frame and passes it as a first argument to
 [`param: expression`]. See [Working with selectors](./selectors.md) for more details. If no
 elements match the selector, the method throws an error.
@@ -438,6 +443,10 @@ Optional argument to pass to [`param: expression`].
 - returns: <[Serializable]>
 
 Returns the return value of [`param: expression`].
+
+:::note
+In most cases, [`method: Locator.evaluateAll`], other [Locator] helper methods and web-first assertions do a better job.
+:::
 
 The method finds all elements matching the specified selector within the frame and passes an array of matched elements
 as a first argument to [`param: expression`]. See [Working with selectors](./selectors.md) for
@@ -546,31 +555,31 @@ Console.WriteLine(await frame.EvaluateAsync<int>("1 + 2")); // prints "3"
 [ElementHandle] instances can be passed as an argument to the [`method: Frame.evaluate`]:
 
 ```js
-const bodyHandle = await frame.$('body');
+const bodyHandle = await frame.evaluate('document.body');
 const html = await frame.evaluate(([body, suffix]) => body.innerHTML + suffix, [bodyHandle, 'hello']);
 await bodyHandle.dispose();
 ```
 
 ```java
-ElementHandle bodyHandle = frame.querySelector("body");
+ElementHandle bodyHandle = frame.evaluate("document.body");
 String html = (String) frame.evaluate("([body, suffix]) => body.innerHTML + suffix", Arrays.asList(bodyHandle, "hello"));
 bodyHandle.dispose();
 ```
 
 ```python async
-body_handle = await frame.query_selector("body")
+body_handle = await frame.evaluate("document.body")
 html = await frame.evaluate("([body, suffix]) => body.innerHTML + suffix", [body_handle, "hello"])
 await body_handle.dispose()
 ```
 
 ```python sync
-body_handle = frame.query_selector("body")
+body_handle = frame.evaluate("document.body")
 html = frame.evaluate("([body, suffix]) => body.innerHTML + suffix", [body_handle, "hello"])
 body_handle.dispose()
 ```
 
 ```csharp
-var bodyHandle = await frame.QuerySelectorAsync("body");
+var bodyHandle = await frame.EvaluateAsync("document.body");
 var html = await frame.EvaluateAsync<string>("([body, suffix]) => body.innerHTML + suffix", new object [] { bodyHandle, "hello" });
 await bodyHandle.DisposeAsync();
 ```
@@ -753,6 +762,42 @@ var frameElement = await frame.FrameElementAsync();
 var contentFrame = await frameElement.ContentFrameAsync();
 Console.WriteLine(frame == contentFrame); // -> True
 ```
+
+
+## method: Frame.frameLocator
+- returns: <[FrameLocator]>
+
+When working with iframes, you can create a frame locator that will enter the iframe and allow selecting elements
+in that iframe. Following snippet locates element with text "Submit" in the iframe with id `my-frame`,
+like `<iframe id="my-frame">`:
+
+```js
+const locator = frame.frameLocator('#my-iframe').locator('text=Submit');
+await locator.click();
+```
+
+```java
+Locator locator = frame.frameLocator("#my-iframe").locator("text=Submit");
+locator.click();
+```
+
+```python async
+locator = frame.frame_locator("#my-iframe").locator("text=Submit")
+await locator.click()
+```
+
+```python sync
+locator = frame.frame_locator("#my-iframe").locator("text=Submit")
+locator.click()
+```
+
+```csharp
+var locator = frame.FrameLocator("#my-iframe").Locator("text=Submit");
+await locator.ClickAsync();
+```
+
+### param: Frame.frameLocator.selector = %%-find-selector-%%
+
 
 ## async method: Frame.getAttribute
 - returns: <[null]|[string]>
@@ -1010,6 +1055,10 @@ Time to wait between `keydown` and `keyup` in milliseconds. Defaults to 0.
 
 Returns the ElementHandle pointing to the frame element.
 
+:::caution
+The use of [ElementHandle] is discouraged, use [Locator] objects and web-first assertions instead.
+:::
+
 The method finds an element matching the specified selector within the frame. See
 [Working with selectors](./selectors.md) for more details. If no elements match the selector,
 returns `null`.
@@ -1025,6 +1074,10 @@ returns `null`.
 - returns: <[Array]<[ElementHandle]>>
 
 Returns the ElementHandles pointing to the frame elements.
+
+:::caution
+The use of [ElementHandle] is discouraged, use [Locator] objects instead.
+:::
 
 The method finds all elements matching the specified selector within the frame. See
 [Working with selectors](./selectors.md) for more details. If no elements match the selector,
@@ -1096,6 +1149,34 @@ await frame.SelectOptionAsync("select#colors", new[] { "red", "green", "blue" })
 ### option: Frame.selectOption.noWaitAfter = %%-input-no-wait-after-%%
 ### option: Frame.selectOption.strict = %%-input-strict-%%
 ### option: Frame.selectOption.timeout = %%-input-timeout-%%
+
+
+## async method: Frame.setChecked
+
+This method checks or unchecks an element matching [`param: selector`] by performing the following steps:
+1. Find an element matching [`param: selector`]. If there is none, wait until a matching element is attached to
+   the DOM.
+1. Ensure that matched element is a checkbox or a radio input. If not, this method throws.
+1. If the element already has the right checked state, this method returns immediately.
+1. Wait for [actionability](./actionability.md) checks on the matched element, unless [`option: force`] option is
+   set. If the element is detached during the checks, the whole action is retried.
+1. Scroll the element into view if needed.
+1. Use [`property: Page.mouse`] to click in the center of the element.
+1. Wait for initiated navigations to either succeed or fail, unless [`option: noWaitAfter`] option is set.
+1. Ensure that the element is now checked or unchecked. If not, this method throws.
+
+When all steps combined have not finished during the specified [`option: timeout`], this method throws a
+[TimeoutError]. Passing zero timeout disables this.
+
+### param: Frame.setChecked.selector = %%-input-selector-%%
+### param: Frame.setChecked.checked = %%-input-checked-%%
+### option: Frame.setChecked.force = %%-input-force-%%
+### option: Frame.setChecked.noWaitAfter = %%-input-no-wait-after-%%
+### option: Frame.setChecked.position = %%-input-position-%%
+### option: Frame.setChecked.strict = %%-input-strict-%%
+### option: Frame.setChecked.timeout = %%-input-timeout-%%
+### option: Frame.setChecked.trial = %%-input-trial-%%
+
 
 ## async method: Frame.setContent
 
@@ -1475,6 +1556,11 @@ a navigation.
 
 Returns when element specified by selector satisfies [`option: state`] option. Returns `null` if waiting for `hidden` or
 `detached`.
+
+:::note
+Playwright automatically waits for element to be ready before performing an action. Using
+[Locator] objects and web-first assertions make the code wait-for-selector-free.
+:::
 
 Wait for the [`param: selector`] to satisfy [`option: state`] option (either appear/disappear from dom, or become
 visible/hidden). If at the moment of calling the method [`param: selector`] already satisfies the condition, the method

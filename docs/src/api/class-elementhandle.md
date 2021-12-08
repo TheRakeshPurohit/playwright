@@ -3,6 +3,10 @@
 
 ElementHandle represents an in-page DOM element. ElementHandles can be created with the [`method: Page.querySelector`] method.
 
+:::caution Discouraged
+The use of ElementHandle is discouraged, use [Locator] objects and web-first assertions instead.
+:::
+
 ```js
 const hrefElement = await page.$('a');
 await hrefElement.click();
@@ -32,11 +36,6 @@ ElementHandle prevents DOM element from garbage collection unless the handle is 
 [`method: JSHandle.dispose`]. ElementHandles are auto-disposed when their origin frame gets navigated.
 
 ElementHandle instances can be used as an argument in [`method: Page.evalOnSelector`] and [`method: Page.evaluate`] methods.
-
-:::note
-In most cases, you would want to use the [Locator] object instead. You should only use [ElementHandle] if you want to retain
-a handle to a particular DOM Node that you intend to pass into [`method: Page.evaluate`] as an argument.
-:::
 
 The difference between the [Locator] and ElementHandle is that the ElementHandle points to a particular element, while [Locator] captures the logic of how to retrieve an element.
 
@@ -742,6 +741,28 @@ content.
 
 ### option: ElementHandle.selectText.force = %%-input-force-%%
 ### option: ElementHandle.selectText.timeout = %%-input-timeout-%%
+
+## async method: ElementHandle.setChecked
+
+This method checks or unchecks an element by performing the following steps:
+1. Ensure that element is a checkbox or a radio input. If not, this method throws.
+1. If the element already has the right checked state, this method returns immediately.
+1. Wait for [actionability](./actionability.md) checks on the matched element, unless [`option: force`] option is
+   set. If the element is detached during the checks, the whole action is retried.
+1. Scroll the element into view if needed.
+1. Use [`property: Page.mouse`] to click in the center of the element.
+1. Wait for initiated navigations to either succeed or fail, unless [`option: noWaitAfter`] option is set.
+1. Ensure that the element is now checked or unchecked. If not, this method throws.
+
+When all steps combined have not finished during the specified [`option: timeout`], this method throws a
+[TimeoutError]. Passing zero timeout disables this.
+
+### param: ElementHandle.setChecked.checked = %%-input-checked-%%
+### option: ElementHandle.setChecked.force = %%-input-force-%%
+### option: ElementHandle.setChecked.noWaitAfter = %%-input-no-wait-after-%%
+### option: ElementHandle.setChecked.position = %%-input-position-%%
+### option: ElementHandle.setChecked.timeout = %%-input-timeout-%%
+### option: ElementHandle.setChecked.trial = %%-input-trial-%%
 
 ## async method: ElementHandle.setInputFiles
 

@@ -50,7 +50,24 @@ test('should be able to call expect.extend in config', async ({ runInlineTest })
   expect(result.passed).toBe(1);
 });
 
-test('should work with default expect prototype functions', async ({runTSC}) => {
+test('should not expand huge arrays', async ({ runInlineTest }) => {
+  const result = await runInlineTest({
+    'expect-test.spec.ts': `
+      const { test } = pwt;
+      test('numeric ranges', () => {
+        const a1 = Array(100000).fill(1);
+        const a2 = Array(100000).fill(1);
+        a2[500] = 2;
+        test.expect(a1).toEqual(a2);
+      });
+    `
+  });
+  expect(result.exitCode).toBe(1);
+  expect(result.passed).toBe(0);
+  expect(result.output.length).toBeLessThan(100000);
+});
+
+test('should work with default expect prototype functions', async ({ runTSC }) => {
   const result = await runTSC({
     'a.spec.ts': `
       const { test } = pwt;
@@ -63,7 +80,7 @@ test('should work with default expect prototype functions', async ({runTSC}) => 
   expect(result.exitCode).toBe(0);
 });
 
-test('should work with default expect matchers', async ({runTSC}) => {
+test('should work with default expect matchers', async ({ runTSC }) => {
   const result = await runTSC({
     'a.spec.ts': `
       const { test } = pwt;
@@ -73,7 +90,7 @@ test('should work with default expect matchers', async ({runTSC}) => {
   expect(result.exitCode).toBe(0);
 });
 
-test('should work with default expect matchers and esModuleInterop=false', async ({runTSC}) => {
+test('should work with default expect matchers and esModuleInterop=false', async ({ runTSC }) => {
   const result = await runTSC({
     'a.spec.ts': `
       const { test } = pwt;
@@ -98,7 +115,7 @@ test('should work with default expect matchers and esModuleInterop=false', async
   expect(result.exitCode).toBe(0);
 });
 
-test('should work with custom PlaywrightTest namespace', async ({runTSC}) => {
+test('should work with custom PlaywrightTest namespace', async ({ runTSC }) => {
   const result = await runTSC({
     'global.d.ts': `
       // Extracted example from their typings.
@@ -126,19 +143,32 @@ test('should work with custom PlaywrightTest namespace', async ({runTSC}) => {
   expect(result.exitCode).toBe(0);
 });
 
-test('should not expand huge arrays', async ({runInlineTest}) => {
-  const result = await runInlineTest({
-    'expect-test.spec.ts': `
-      const { test } = pwt;
-      test('numeric ranges', () => {
-        const a1 = Array(100000).fill(1);
-        const a2 = Array(100000).fill(1);
-        a2[500] = 2;
-        test.expect(a1).toEqual(a2);
-      });
+test('should propose only the relevant matchers when custom expect matcher classes were passed', async ({ runTSC }) => {
+  test.fixme();
+  const result = await runTSC({
+    'a.spec.ts': `
+    const { test } = pwt;
+    test('custom matchers', async ({ page }) => {
+      await test.expect(page).toHaveURL('https://example.com');
+      // @ts-expect-error
+      await test.expect(page).toBe(true);
+      // @ts-expect-error
+      await test.expect(page).toBeEnabled();
+
+      await test.expect(page.locator('foo')).toBeEnabled();
+      // @ts-expect-error
+      await test.expect(page.locator('foo')).toBe(true);
+      // @ts-expect-error
+      await test.expect(page.locator('foo')).toHaveURL('https://example.com');
+
+      const res = await page.request.get('http://i-do-definitely-not-exist.com');
+      await test.expect(res).toBeOK();
+      // @ts-expect-error
+      await test.expect(res).toBe(true);
+      // @ts-expect-error
+      await test.expect(res).toHaveURL('https://example.com');
+    });
     `
   });
-  expect(result.exitCode).toBe(1);
-  expect(result.passed).toBe(0);
-  expect(result.output.length).toBeLessThan(100000);
+  expect(result.exitCode).toBe(0);
 });

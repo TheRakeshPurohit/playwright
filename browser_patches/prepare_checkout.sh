@@ -33,9 +33,7 @@ function prepare_chromium_checkout {
   source "${SCRIPT_PATH}/chromium/ensure_depot_tools.sh"
 
   if [[ -z "${CR_CHECKOUT_PATH}" ]]; then
-    echo "ERROR: chromium compilation requires CR_CHECKOUT_PATH to be set to reuse checkout."
-    echo "NOTE: we expect '\$CR_CHECKOUT_PATH/src' to exist to be a valid chromium checkout."
-    exit 1
+    CR_CHECKOUT_PATH="$HOME/chromium"
   fi
 
   # Get chromium SHA from the build revision.
@@ -46,8 +44,8 @@ function prepare_chromium_checkout {
 
   # Update Chromium checkout.
   #
-  # This is based on https://chromium.googlesource.com/chromium/src/+/master/docs/linux/build_instructions.md#get-the-code
-  if [[ ! -d "${CR_CHECKOUT_PATH}/src" ]]; then
+  # This is based on https://chromium.googlesource.com/chromium/src/+/main/docs/linux/build_instructions.md#get-the-code
+  if [[ ! -d "${CR_CHECKOUT_PATH}" ]]; then
     rm -rf "${CR_CHECKOUT_PATH}"
     mkdir -p "${CR_CHECKOUT_PATH}"
     cd "${CR_CHECKOUT_PATH}"
@@ -58,9 +56,14 @@ function prepare_chromium_checkout {
     fi
     gclient runhooks
   fi
+  if [[ ! -d "${CR_CHECKOUT_PATH}/src" ]]; then
+    echo "ERROR: CR_CHECKOUT_PATH does not have src/ subfolder; is this a chromium checkout?"
+    exit 1
+  fi
+
   cd "${CR_CHECKOUT_PATH}/src"
-  git checkout master
-  git pull origin master
+  git checkout main
+  git pull origin main
   git checkout "${CRSHA}"
   gclient sync -D
 }
@@ -82,53 +85,51 @@ elif [[ ("$1" == "winldd") || ("$1" == "winldd/") ]]; then
   echo "FYI: winldd source code is available right away"
   exit 0
 elif [[ ("$1" == "firefox") || ("$1" == "firefox/") || ("$1" == "ff") ]]; then
-  FRIENDLY_CHECKOUT_PATH="//browser_patches/firefox/checkout";
-  CHECKOUT_PATH="$PWD/firefox/checkout"
-  PATCHES_PATH="$PWD/firefox/patches"
-  FIREFOX_EXTRA_FOLDER_PATH="$PWD/firefox/juggler"
-  BUILD_NUMBER=$(head -1 "$PWD/firefox/BUILD_NUMBER")
-  source "./firefox/UPSTREAM_CONFIG.sh"
-  if [[ ! -z "${FF_CHECKOUT_PATH}" ]]; then
+  if [[ -z "${FF_CHECKOUT_PATH}" ]]; then
+    FRIENDLY_CHECKOUT_PATH='$HOME/firefox';
+    CHECKOUT_PATH="$HOME/firefox"
+  else
     echo "WARNING: using checkout path from FF_CHECKOUT_PATH env: ${FF_CHECKOUT_PATH}"
     CHECKOUT_PATH="${FF_CHECKOUT_PATH}"
     FRIENDLY_CHECKOUT_PATH="<FF_CHECKOUT_PATH>"
   fi
+
+  PATCHES_PATH="$PWD/firefox/patches"
+  FIREFOX_EXTRA_FOLDER_PATH="$PWD/firefox/juggler"
+  BUILD_NUMBER=$(head -1 "$PWD/firefox/BUILD_NUMBER")
+  source "./firefox/UPSTREAM_CONFIG.sh"
 elif [[ ("$1" == "firefox-beta") || ("$1" == "ff-beta") ]]; then
   # NOTE: firefox-beta re-uses firefox checkout.
-  FRIENDLY_CHECKOUT_PATH="//browser_patches/firefox/checkout";
-  CHECKOUT_PATH="$PWD/firefox/checkout"
+  if [[ -z "${FF_CHECKOUT_PATH}" ]]; then
+    FRIENDLY_CHECKOUT_PATH='$HOME/firefox';
+    CHECKOUT_PATH="$HOME/firefox"
+  else
+    echo "WARNING: using checkout path from FF_CHECKOUT_PATH env: ${FF_CHECKOUT_PATH}"
+    CHECKOUT_PATH="${FF_CHECKOUT_PATH}"
+    FRIENDLY_CHECKOUT_PATH="<FF_CHECKOUT_PATH>"
+  fi
 
   PATCHES_PATH="$PWD/firefox-beta/patches"
   FIREFOX_EXTRA_FOLDER_PATH="$PWD/firefox-beta/juggler"
   BUILD_NUMBER=$(head -1 "$PWD/firefox-beta/BUILD_NUMBER")
   source "./firefox-beta/UPSTREAM_CONFIG.sh"
-  if [[ ! -z "${FF_CHECKOUT_PATH}" ]]; then
-    echo "WARNING: using checkout path from FF_CHECKOUT_PATH env: ${FF_CHECKOUT_PATH}"
-    CHECKOUT_PATH="${FF_CHECKOUT_PATH}"
-    FRIENDLY_CHECKOUT_PATH="<FF_CHECKOUT_PATH>"
-  fi
 elif [[ ("$1" == "webkit") || ("$1" == "webkit/") || ("$1" == "wk") ]]; then
-  FRIENDLY_CHECKOUT_PATH="//browser_patches/webkit/checkout";
-  CHECKOUT_PATH="$PWD/webkit/checkout"
-  PATCHES_PATH="$PWD/webkit/patches"
-  WEBKIT_EXTRA_FOLDER_PATH="$PWD/webkit/embedder/Playwright"
-  BUILD_NUMBER=$(head -1 "$PWD/webkit/BUILD_NUMBER")
-  source "./webkit/UPSTREAM_CONFIG.sh"
-  if [[ ! -z "${WK_CHECKOUT_PATH}" ]]; then
+  if [[ -z "${WK_CHECKOUT_PATH}" ]]; then
+    FRIENDLY_CHECKOUT_PATH='$HOME/webkit';
+    CHECKOUT_PATH="$HOME/webkit"
+  else
     echo "WARNING: using checkout path from WK_CHECKOUT_PATH env: ${WK_CHECKOUT_PATH}"
     CHECKOUT_PATH="${WK_CHECKOUT_PATH}"
     FRIENDLY_CHECKOUT_PATH="<WK_CHECKOUT_PATH>"
   fi
+
+  PATCHES_PATH="$PWD/webkit/patches"
+  WEBKIT_EXTRA_FOLDER_PATH="$PWD/webkit/embedder/Playwright"
+  BUILD_NUMBER=$(head -1 "$PWD/webkit/BUILD_NUMBER")
+  source "./webkit/UPSTREAM_CONFIG.sh"
 else
   echo ERROR: unknown browser - "$1"
   exit 1
-fi
-
-# we will use this just for beauty.
-if [[ $# == 2 ]]; then
-  echo "WARNING: using custom checkout path $CHECKOUT_PATH"
-  CHECKOUT_PATH=$2
-  FRIENDLY_CHECKOUT_PATH="<custom_checkout('$2')>"
 fi
 
 # if there's no checkout folder - checkout one.
@@ -173,28 +174,34 @@ else
 fi
 
 # Check if our checkout contains BASE_REVISION.
-# If not, fetch from REMOTE_BROWSER_UPSTREAM and slowly fetch more and more commits
-# until we find $BASE_REVISION.
-# This technique allows us start with a shallow clone.
 if ! git cat-file -e "$BASE_REVISION"^{commit} 2>/dev/null; then
   # Detach git head so that we can fetch into branch.
   git checkout --detach >/dev/null 2>/dev/null
 
-  # Fetch 128 commits first, and then double the amount every iteration.
-  FETCH_DEPTH=128
-  SUCCESS="no"
-  while (( FETCH_DEPTH <= 8192 )); do
-    echo "Fetching ${FETCH_DEPTH} commits to find base revision..."
-    git fetch --depth "${FETCH_DEPTH}" $REMOTE_BROWSER_UPSTREAM "$BASE_BRANCH"
-    FETCH_DEPTH=$(( FETCH_DEPTH * 2 ));
-    if git cat-file -e "$BASE_REVISION"^{commit} >/dev/null; then
-      SUCCESS="yes"
-      break;
+  if [[ -z "$CI" ]]; then
+    # On non-CI, fetch everything.
+    git fetch "$REMOTE_BROWSER_UPSTREAM" "$BASE_BRANCH"
+  else
+    # On CI, fetch from REMOTE_BROWSER_UPSTREAM more and more commits
+    # until we find $BASE_REVISION.
+    # This technique allows us start with a shallow clone.
+
+    # Fetch 128 commits first, and then double the amount every iteration.
+    FETCH_DEPTH=128
+    SUCCESS="no"
+    while (( FETCH_DEPTH <= 8192 )); do
+      echo "Fetching ${FETCH_DEPTH} commits to find base revision..."
+      git fetch --depth "${FETCH_DEPTH}" "$REMOTE_BROWSER_UPSTREAM" "$BASE_BRANCH"
+      FETCH_DEPTH=$(( FETCH_DEPTH * 2 ));
+      if git cat-file -e "$BASE_REVISION"^{commit} >/dev/null; then
+        SUCCESS="yes"
+        break;
+      fi
+    done
+    if [[ "${SUCCESS}" == "no" ]]; then
+      echo "ERROR: $FRIENDLY_CHECKOUT_PATH/ does not include the BASE_REVISION (@$BASE_REVISION). Wrong revision number?"
+      exit 1
     fi
-  done
-  if [[ "${SUCCESS}" == "no" ]]; then
-    echo "ERROR: $FRIENDLY_CHECKOUT_PATH/ does not include the BASE_REVISION (@$BASE_REVISION). Wrong revision number?"
-    exit 1
   fi
 fi
 

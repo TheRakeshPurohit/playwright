@@ -15,8 +15,9 @@ These options define your test suite:
 - `metadata: any` - Any JSON-serializable metadata that will be put directly to the test report.
 - `name: string` - Project name, useful when defining multiple [test projects](#projects).
 - `outputDir: string` - Output directory for files created during the test run.
+- `snapshotDir: string` - Base output directory for snapshot files.
 - `repeatEach: number` - The number of times to repeat each test, useful for debugging flaky tests.
-- `retries: number` - The maximum number of retry attempts given to failed tests.
+- `retries: number` - The maximum number of retry attempts given to failed tests. If not specified, failing tests are not retried.
 - `testDir: string` - Directory that will be recursively scanned for test files.
 - `testIgnore: string | RegExp | (string | RegExp)[]` - Files matching one of these patterns are not considered test files.
 - `testMatch: string | RegExp | (string | RegExp)[]` - Only the files matching one of these patterns are considered test files.
@@ -38,8 +39,8 @@ These options would be typically different between local development and CI oper
   - `'failures-only'` - only preserve output for failed tests.
 - `projects: Project[]` - Multiple [projects](#projects) configuration.
 - `quiet: boolean` - Whether to suppress stdout and stderr from the tests.
-- `reporter: 'list' | 'line' | 'dot' | 'json' | 'junit'` - The reporter to use. See [reporters](./test-reporters.md) for details.
-- `reportSlowTests: { max: number, threshold: number } | null` - Whether to report slow tests. When `null`, slow tests are not reported. Otherwise, tests that took more than `threshold` milliseconds are reported as slow, but no more than `max` number of them. Passing zero as `max` reports all slow tests that exceed the threshold.
+- `reporter: 'list' | 'line' | 'dot' | 'json' | 'junit' | 'github' | 'html' | 'null'` - The reporter to use. See [reporters](./test-reporters.md) for details.
+- `reportSlowTests: { max: number, threshold: number } | null` - Whether to report slow test files. When `null`, slow test files are not reported. Otherwise, test files that took more than `threshold` milliseconds are reported as slow, but no more than `max` number of them. Passing zero as `max` reports all test files that exceed the threshold.
 - `shard: { total: number, current: number } | null` - [Shard](./test-parallel.md#shard-tests-between-multiple-machines) information.
 - `updateSnapshots: boolean` - Whether to update expected snapshots with the actual results produced by the test run.
 - `workers: number` - The maximum number of concurrent worker processes to use for parallelizing tests.
@@ -120,7 +121,7 @@ In addition to everything from the [`workerInfo`](#workerinfo), the following in
 - `timeout: number` - Test timeout.
 - `annotations` - [Annotations](./test-annotations.md) that were added to the test.
 - `snapshotSuffix: string` - Suffix used to locate snapshots for the test.
-- `snapshotPath(snapshotName: string)` - Function that returns the full path to a particular snapshot for the test.
+- `snapshotPath(...pathSegments: string[])` - Function that returns the full path to a particular snapshot for the test.
 - `outputDir: string` - Path to the output directory for this test run.
 - `outputPath(...pathSegments: string[])` - Function that returns the full path to a particular output artifact for the test.
 
@@ -205,7 +206,7 @@ export const test = base.extend<{ saveLogs: void }>({
 
 To launch a server during the tests, use the `webServer` option in the [configuration file](#configuration-object).
 
-You can specify a port via `port` or additional environment variables, see [here](#configuration-object). The server will wait for it to be available before running the tests. For continuous integration, you may want to use the `reuseExistingServer: !process.env.CI` option which does not use an existing server on the CI.
+You can specify a port via `port` or additional environment variables, see [here](#configuration-object). The server will wait for it to be available (on `127.0.0.1` or `::1`) before running the tests. For continuous integration, you may want to use the `reuseExistingServer: !process.env.CI` option which does not use an existing server on the CI.
 
 The port gets then passed over to Playwright as a [`param: baseURL`] when creating the context [`method: Browser.newContext`].
 
@@ -242,7 +243,7 @@ Now you can use a relative path when navigating the page, or use `baseURL` fixtu
 
 ```js js-flavor=ts
 // test.spec.ts
-import { test } = from '@playwright/test';
+import { test } from '@playwright/test';
 test('test', async ({ page, baseURL }) => {
   // baseURL is taken directly from your web server,
   // e.g. http://localhost:3000
@@ -270,50 +271,49 @@ test('test', async ({ page, baseURL }) => {
 
 ## Global setup and teardown
 
-To set something up once before running all tests, use `globalSetup` option in the [configuration file](#configuration-object).
+To set something up once before running all tests, use `globalSetup` option in the [configuration file](#configuration-object). Global setup file must export a single function that takes a config object. This function will be run once before all the tests.
 
 Similarly, use `globalTeardown` to run something once after all the tests. Alternatively, let `globalSetup` return a function that will be used as a global teardown. You can pass data such as port number, authentication tokens, etc. from your global setup to your tests using environment.
 
-Here is a global setup example that runs an app.
+Here is a global setup example that authenticates once and reuses authentication state in tests. It uses `baseURL` and `storageState` options from the configuration file.
+
 ```js js-flavor=js
 // global-setup.js
-const app = require('./my-app');
+const { chromium } = require('@playwright/test');
 
-module.exports = async () => {
-  const server = require('http').createServer(app);
-  await new Promise(done => server.listen(done));
-
-  // Expose port to the tests.
-  process.env.SERVER_PORT = String(server.address().port);
-
-  // Return the teardown function.
-  return async () => {
-    await new Promise(done => server.close(done));
-  };
+module.exports = async config => {
+  const { baseURL, storageState } = config.projects[0].use;
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  await page.goto(baseURL);
+  await page.fill('input[name="user"]', 'user');
+  await page.fill('input[name="password"]', 'password');
+  await page.click('text=Sign in');
+  await page.context().storageState({ path: storageState });
+  await browser.close();
 };
 ```
 
 ```js js-flavor=ts
 // global-setup.ts
-import app from './my-app';
-import * as http from 'http';
+import { chromium, FullConfig } from '@playwright/test';
 
-async function globalSetup() {
-  const server = http.createServer(app);
-  await new Promise(done => server.listen(done));
-
-  // Expose port to the tests.
-  process.env.SERVER_PORT = String(server.address().port);
-
-  // Return the teardown function.
-  return async () => {
-    await new Promise(done => server.close(done));
-  };
+async function globalSetup(config: FullConfig) {
+  const { baseURL, storageState } = config.projects[0].use;
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  await page.goto(baseURL!);
+  await page.fill('input[name="user"]', 'user');
+  await page.fill('input[name="password"]', 'password');
+  await page.click('text=Sign in');
+  await page.context().storageState({ path: storageState as string });
+  await browser.close();
 }
+
 export default globalSetup;
 ```
 
-Now add `globalSetup` option to the configuration file.
+Specify `globalSetup`, `baseURL` and `storageState` in the configuration file.
 
 ```js js-flavor=js
 // playwright.config.js
@@ -321,6 +321,10 @@ Now add `globalSetup` option to the configuration file.
 /** @type {import('@playwright/test').PlaywrightTestConfig} */
 const config = {
   globalSetup: require.resolve('./global-setup'),
+  use: {
+    baseURL: 'http://localhost:3000/',
+    storageState: 'state.json',
+  },
 };
 module.exports = config;
 ```
@@ -331,27 +335,31 @@ import { PlaywrightTestConfig } from '@playwright/test';
 
 const config: PlaywrightTestConfig = {
   globalSetup: require.resolve('./global-setup'),
+  use: {
+    baseURL: 'http://localhost:3000/',
+    storageState: 'state.json',
+  },
 };
 export default config;
 ```
 
-Tests will now run after the global setup is done and will have access to the data created in the global setup:
+Tests start already authenticated because we specify `storageState` that was populated by global setup.
 
-```js js-flavor=js
-// test.spec.js
-const { test } = require('@playwright/test');
+```js js-flavor=ts
+import { test } from '@playwright/test';
 
-test('test', async ({ }) => {
-  console.log(process.env.SERVER_PORT);
+test('test', async ({ page }) => {
+  await page.goto('/');
+  // You are signed in!
 });
 ```
 
-```js js-flavor=ts
-// test.spec.ts
-import { test } = from '@playwright/test';
+```js js-flavor=js
+const { test } = require('@playwright/test');
 
-test('test', async ({ }) => {
-  console.log(process.env.SERVER_PORT);
+test('test', async ({ page }) => {
+  await page.goto('/');
+  // You are signed in!
 });
 ```
 
@@ -359,7 +367,7 @@ test('test', async ({ }) => {
 
 Playwright Test supports running multiple test projects at the same time. This is useful for running the same tests in multiple configurations. For example, consider running tests against multiple versions of some REST backend.
 
-To make use of this feature, we will declare an "option fixture" for the backend version, and use it in the tests.
+In the following example, we will declare an option for the backend version, and a fixture that uses the option, and we'll be configuring two projects that test against different versions.
 
 ```js js-flavor=js
 // my-test.js
@@ -367,8 +375,9 @@ const base = require('@playwright/test');
 const { startBackend } = require('./my-backend');
 
 exports.test = base.test.extend({
-  // Default value for the version.
-  version: '1.0',
+  // Define an option and provide a default value.
+  // We can later override it in the config.
+  version: ['1.0', { option: true }],
 
   // Use version when starting the backend.
   backendURL: async ({ version }, use) => {
@@ -384,14 +393,13 @@ exports.test = base.test.extend({
 import { test as base } from '@playwright/test';
 import { startBackend } from './my-backend';
 
-export type TestOptions = {
-  version: string;
-  backendURL: string;
-};
+export type TestOptions = { version: string };
+type TestFixtures = { backendURL: string };
 
-export const test = base.extend<TestOptions>({
-  // Default value for the version.
-  version: '1.0',
+export const test = base.extend<TestOptions & TestFixtures>({
+  // Define an option and provide a default value.
+  // We can later override it in the config.
+  version: ['1.0', { option: true }],
 
   // Use version when starting the backend.
   backendURL: async ({ version }, use) => {
@@ -402,7 +410,7 @@ export const test = base.extend<TestOptions>({
 });
 ```
 
-We can use our fixtures in the test.
+We can use our fixture and/or option in the test.
 ```js js-flavor=js
 // example.spec.js
 const { test } = require('./my-test');
@@ -437,14 +445,13 @@ test('test 2', async ({ version, page, backendURL }) => {
 });
 ```
 
-Now, we can run test in multiple configurations by using projects.
+Now, we can run tests in multiple configurations by using projects.
 ```js js-flavor=js
 // playwright.config.js
 // @ts-check
 
 /** @type {import('@playwright/test').PlaywrightTestConfig<{ version: string }>} */
 const config = {
-  timeout: 20000,
   projects: [
     {
       name: 'v1',
@@ -466,7 +473,6 @@ import { PlaywrightTestConfig } from '@playwright/test';
 import { TestOptions } from './my-test';
 
 const config: PlaywrightTestConfig<TestOptions> = {
-  timeout: 20000,
   projects: [
     {
       name: 'v1',
@@ -481,7 +487,7 @@ const config: PlaywrightTestConfig<TestOptions> = {
 export default config;
 ```
 
-Each project can be configured separately, and run different set of tests with different parameters. See [test suite options](#test-suite-options) for the list of options available to each project.
+Each project can be configured separately, and run different set of tests with different of [built-in][TestProject] and custom options.
 
 You can run all projects or just a single one:
 ```bash
@@ -491,6 +497,12 @@ npx playwright test
 # Run a single project - each test will be run once
 npx playwright test --project=v2
 ```
+
+There are many more things you can do with projects:
+- Run a subset of test by specifying different `testDir` for each project.
+- Run tests in multiple configurations, for example with desktop Chromium and emulating Chrome for Android.
+- Run "core" tests without retries to ensure stability of the core functionality, and use `retries` for other tests.
+- And much more! See [project options][TestProject] for the list of options available to each project.
 
 ## Add custom matchers using expect.extend
 

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { FullConfig, TestStatus, TestError } from './test';
+import type { FullConfig, FullProject, TestStatus, TestError } from './test';
 export type { FullConfig, TestStatus, TestError } from './test';
 
 export interface Location {
@@ -24,15 +24,18 @@ export interface Location {
 }
 
 export interface Suite {
+  parent?: Suite;
   title: string;
   location?: Location;
   suites: Suite[];
   tests: TestCase[];
   titlePath(): string[];
   allTests(): TestCase[];
+  project(): FullProject | undefined;
 }
 
 export interface TestCase {
+  parent: Suite;
   title: string;
   location: Location;
   titlePath(): string[];
@@ -61,12 +64,14 @@ export interface TestResult {
 export interface TestStep {
   title: string;
   titlePath(): string[];
+  location?: Location;
   parent?: TestStep;
   category: string,
   startTime: Date;
   duration: number;
   error?: TestError;
   steps: TestStep[];
+  data: { [key: string]: any };
 }
 
 /**
@@ -84,6 +89,7 @@ export interface FullResult {
 }
 
 export interface Reporter {
+  printsToStdio?(): boolean;
   onBegin?(config: FullConfig, suite: Suite): void;
   onTestBegin?(test: TestCase, result: TestResult): void;
   onStdOut?(chunk: string | Buffer, test?: TestCase, result?: TestResult): void;

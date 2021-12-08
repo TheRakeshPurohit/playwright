@@ -20,10 +20,14 @@ import { playwrightTest as it, expect } from './config/browserTest';
 
 // Use something worker-scoped (e.g. launch args) to force a new worker for this file.
 // Otherwise, a browser launched for other tests in this worker will affect the expectations.
-it.use({ args: [] });
+it.use({
+  launchOptions: async ({ launchOptions }, use) => {
+    await use({ ...launchOptions, args: [] });
+  }
+});
 
-it('should scope context handles', async ({browserType, browserOptions, server}) => {
-  const browser = await browserType.launch(browserOptions);
+it('should scope context handles', async ({ browserType, server }) => {
+  const browser = await browserType.launch();
   const GOLDEN_PRECONDITION = {
     _guid: '',
     objects: [
@@ -53,10 +57,11 @@ it('should scope context handles', async ({browserType, browserOptions, server})
         { _guid: 'browser', objects: [
           { _guid: 'browser-context', objects: [
             { _guid: 'frame', objects: [] },
-            { _guid: 'page', objects: []},
+            { _guid: 'page', objects: [] },
             { _guid: 'request', objects: [] },
             { _guid: 'response', objects: [] },
-          ]},
+          ] },
+          { _guid: 'fetchRequest', objects: [] }
         ] },
       ] },
       { _guid: 'electron', objects: [] },
@@ -70,10 +75,10 @@ it('should scope context handles', async ({browserType, browserOptions, server})
   await browser.close();
 });
 
-it('should scope CDPSession handles', async ({browserType, browserOptions, browserName}) => {
+it('should scope CDPSession handles', async ({ browserType, browserName }) => {
   it.skip(browserName !== 'chromium');
 
-  const browser = await browserType.launch(browserOptions);
+  const browser = await browserType.launch();
   const GOLDEN_PRECONDITION = {
     _guid: '',
     objects: [
@@ -114,7 +119,7 @@ it('should scope CDPSession handles', async ({browserType, browserOptions, brows
   await browser.close();
 });
 
-it('should scope browser handles', async ({browserType, browserOptions}) => {
+it('should scope browser handles', async ({ browserType }) => {
   const GOLDEN_PRECONDITION = {
     _guid: '',
     objects: [
@@ -129,7 +134,7 @@ it('should scope browser handles', async ({browserType, browserOptions}) => {
   };
   await expectScopeState(browserType, GOLDEN_PRECONDITION);
 
-  const browser = await browserType.launch(browserOptions);
+  const browser = await browserType.launch();
   await browser.newContext();
   await expectScopeState(browserType, {
     _guid: '',
@@ -140,7 +145,8 @@ it('should scope browser handles', async ({browserType, browserOptions}) => {
       { _guid: 'browser-type', objects: [
         {
           _guid: 'browser', objects: [
-            { _guid: 'browser-context', objects: [] }
+            { _guid: 'browser-context', objects: [] },
+            { _guid: 'fetchRequest', objects: [] }
           ]
         },
       ]
@@ -155,13 +161,13 @@ it('should scope browser handles', async ({browserType, browserOptions}) => {
   await expectScopeState(browserType, GOLDEN_PRECONDITION);
 });
 
-it('should work with the domain module', async ({ browserType, browserOptions, server, browserName }) => {
+it('should work with the domain module', async ({ browserType, server, browserName }) => {
   const local = domain.create();
   local.run(() => { });
   let err;
   local.on('error', e => err = e);
 
-  const browser = await browserType.launch(browserOptions);
+  const browser = await browserType.launch();
   const page = await browser.newPage();
 
   expect(await page.evaluate(() => 1 + 1)).toBe(2);

@@ -18,21 +18,21 @@ import { playwrightTest as it, expect } from './config/browserTest';
 import socks from 'socksv5';
 import net from 'net';
 
-it('should throw for bad server value', async ({browserType, browserOptions}) => {
+it.skip(({ mode }) => mode === 'service');
+
+it('should throw for bad server value', async ({ browserType }) => {
   const error = await browserType.launch({
-    ...browserOptions,
     // @ts-expect-error server must be a string
     proxy: { server: 123 }
   }).catch(e => e);
   expect(error.message).toContain('proxy.server: expected string, got number');
 });
 
-it('should use proxy', async ({browserType, browserOptions, server}) => {
+it('should use proxy', async ({ browserType, server }) => {
   server.setRoute('/target.html', async (req, res) => {
     res.end('<html><title>Served by the proxy</title></html>');
   });
   const browser = await browserType.launch({
-    ...browserOptions,
     proxy: { server: `localhost:${server.PORT}` }
   });
   const page = await browser.newPage();
@@ -41,12 +41,11 @@ it('should use proxy', async ({browserType, browserOptions, server}) => {
   await browser.close();
 });
 
-it('should use proxy for second page', async ({browserType, browserOptions, server}) => {
+it('should use proxy for second page', async ({ browserType, server }) => {
   server.setRoute('/target.html', async (req, res) => {
     res.end('<html><title>Served by the proxy</title></html>');
   });
   const browser = await browserType.launch({
-    ...browserOptions,
     proxy: { server: `localhost:${server.PORT}` }
   });
 
@@ -61,12 +60,11 @@ it('should use proxy for second page', async ({browserType, browserOptions, serv
   await browser.close();
 });
 
-it('should work with IP:PORT notion', async ({browserType, browserOptions, server}) => {
+it('should work with IP:PORT notion', async ({ browserType, server }) => {
   server.setRoute('/target.html', async (req, res) => {
     res.end('<html><title>Served by the proxy</title></html>');
   });
   const browser = await browserType.launch({
-    ...browserOptions,
     proxy: { server: `127.0.0.1:${server.PORT}` }
   });
   const page = await browser.newPage();
@@ -75,7 +73,7 @@ it('should work with IP:PORT notion', async ({browserType, browserOptions, serve
   await browser.close();
 });
 
-it('should authenticate', async ({browserType, browserOptions, server}) => {
+it('should authenticate', async ({ browserType, server }) => {
   server.setRoute('/target.html', async (req, res) => {
     const auth = req.headers['proxy-authorization'];
     if (!auth) {
@@ -88,7 +86,6 @@ it('should authenticate', async ({browserType, browserOptions, server}) => {
     }
   });
   const browser = await browserType.launch({
-    ...browserOptions,
     proxy: { server: `localhost:${server.PORT}`, username: 'user', password: 'secret' }
   });
   const page = await browser.newPage();
@@ -97,7 +94,7 @@ it('should authenticate', async ({browserType, browserOptions, server}) => {
   await browser.close();
 });
 
-it('should exclude patterns', async ({browserType, browserOptions, server, browserName, headless}) => {
+it('should exclude patterns', async ({ browserType, server, browserName, headless }) => {
   it.fixme(browserName === 'chromium' && !headless, 'Chromium headed crashes with CHECK(!in_frame_tree_) in RenderFrameImpl::OnDeleteFrame.');
 
   server.setRoute('/target.html', async (req, res) => {
@@ -108,7 +105,6 @@ it('should exclude patterns', async ({browserType, browserOptions, server, brows
   //
   // @see https://gist.github.com/CollinChaffin/24f6c9652efb3d6d5ef2f5502720ef00
   const browser = await browserType.launch({
-    ...browserOptions,
     proxy: { server: `localhost:${server.PORT}`, bypass: '1.non.existent.domain.for.the.test, 2.non.existent.domain.for.the.test, .another.test' }
   });
 
@@ -139,9 +135,8 @@ it('should exclude patterns', async ({browserType, browserOptions, server, brows
   await browser.close();
 });
 
-it('should use socks proxy', async ({ browserType, browserOptions, socksPort }) => {
+it('should use socks proxy', async ({ browserType, socksPort }) => {
   const browser = await browserType.launch({
-    ...browserOptions,
     proxy: { server: `socks5://localhost:${socksPort}` }
   });
   const page = await browser.newPage();
@@ -150,9 +145,8 @@ it('should use socks proxy', async ({ browserType, browserOptions, socksPort }) 
   await browser.close();
 });
 
-it('should use socks proxy in second page', async ({ browserType, browserOptions, socksPort }) => {
+it('should use socks proxy in second page', async ({ browserType, socksPort }) => {
   const browser = await browserType.launch({
-    ...browserOptions,
     proxy: { server: `socks5://localhost:${socksPort}` }
   });
 
@@ -167,15 +161,14 @@ it('should use socks proxy in second page', async ({ browserType, browserOptions
   await browser.close();
 });
 
-it('does launch without a port', async ({ browserType, browserOptions }) => {
+it('does launch without a port', async ({ browserType }) => {
   const browser = await browserType.launch({
-    ...browserOptions,
     proxy: { server: 'http://localhost' }
   });
   await browser.close();
 });
 
-it('should use proxy with emulated user agent', async ({ browserType, browserOptions }) => {
+it('should use proxy with emulated user agent', async ({ browserType }) => {
   it.fixme(true, 'Non-emulated user agent is used in proxy CONNECT');
 
   let requestText = '';
@@ -186,10 +179,9 @@ it('should use proxy with emulated user agent', async ({ browserType, browserOpt
       socket.end();
     });
   });
-  await new Promise(f => server.listen(0, f));
+  await new Promise<void>(f => server.listen(0, f));
 
   const browser = await browserType.launch({
-    ...browserOptions,
     proxy: { server: `http://127.0.0.1:${(server.address() as any).port}` }
   });
 
@@ -221,7 +213,7 @@ async function setupSocksForwardingServer(port: number, forwardPort: number){
       dstSock.connect(forwardPort, '127.0.0.1');
     }
   });
-  await new Promise(resolve => socksServer.listen(port, 'localhost', resolve));
+  await new Promise<void>(resolve => socksServer.listen(port, 'localhost', resolve));
   socksServer.useAuth(socks.auth.None());
   return {
     closeProxyServer: () => socksServer.close(),
@@ -229,11 +221,10 @@ async function setupSocksForwardingServer(port: number, forwardPort: number){
   };
 }
 
-it('should use SOCKS proxy for websocket requests', async ({browserName, platform, browserType, browserOptions, server}, testInfo) => {
+it('should use SOCKS proxy for websocket requests', async ({ browserName, platform, browserType, server }, testInfo) => {
   it.fixme(browserName === 'webkit' && platform !== 'linux');
-  const {proxyServerAddr, closeProxyServer} = await setupSocksForwardingServer(testInfo.workerIndex + 2048 + 2, server.PORT);
+  const { proxyServerAddr, closeProxyServer } = await setupSocksForwardingServer(testInfo.workerIndex + 2048 + 2, server.PORT);
   const browser = await browserType.launch({
-    ...browserOptions,
     proxy: {
       server: proxyServerAddr,
     }
